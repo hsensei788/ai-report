@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>電子病歷簽章率分析儀 v10.9 (AI Logic Fixed)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+
+    <style>
+        /* CSS is identical to v10.8 */
+        :root {
+            --color-bg-primary: #f0f2f5;
+            --color-bg-secondary: #ffffff;
+            --color-text-primary: #343a40;
+            --color-text-secondary: #6c757d;
+            --color-text-headings: #212529;
+            --color-border-primary: #dee2e6;
+            --year1-color: #1e90ff; /* Cool Blue */
+            --year2-color: #ff7f50; /* Warm Coral */
+            --shadow-color: rgba(0, 0, 0, 0.05);
+            --color-accent-blue: #1e90ff;
+            --color-accent-green: #28a745;
+            --color-accent-yellow: #ffc107;
+            --color-accent-red: #dc3545;
+            --color-accent-purple: #8f7bff;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif; background-color: var(--color-bg-primary); color: var(--color-text-primary); margin: 0; padding: 20px; }
+        .container { max-width: 1600px; margin: auto; background-color: transparent; padding: 0; border: none; }
+        h1, h2 { color: var(--color-text-headings); text-align: center; }
+        h1 { border-bottom: 1px solid var(--color-border-primary); padding-bottom: 20px; font-weight: 600; margin-bottom: 30px; }
+        h2 { margin-top: 40px; }
+        .upload-container { display: flex; justify-content: center; gap: 30px; margin: 0 auto 25px auto; flex-wrap: wrap; }
+        .upload-wrapper { background-color: var(--color-bg-secondary); border: 1px solid var(--color-border-primary); box-shadow: 0 2px 8px var(--shadow-color); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 25px; width: 45%; min-width: 380px; border-radius: 12px; }
+        .upload-btn { background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 500; transition: background-color 0.2s; }
+        .upload-btn:hover { background-color: #5a6268; }
+        .file-name-display { margin: 15px 0; color: var(--color-text-secondary); font-style: italic; min-height: 1.2em; }
+        .format-info { color: var(--color-text-secondary); font-size: 0.85em; text-align: left; width: 100%; }
+        input[type="file"] { display: none; }
+        #comparison-setup { background-color: var(--color-bg-secondary); border: 1px solid var(--color-border-primary); box-shadow: 0 2px 8px var(--shadow-color); padding: 25px; border-radius: 12px; margin: 20px auto; max-width: 800px; }
+        .year-selectors { display: flex; justify-content: center; align-items: center; gap: 20px; }
+        .year-selectors select { background-color: #f8f9fa; color: var(--color-text-primary); border: 1px solid var(--color-border-primary); border-radius: 8px; padding: 10px; font-size: 1rem; min-width: 150px; }
+        #start-comparison-btn { display: block; margin: 25px auto 0; padding: 12px 30px; font-size: 1.2rem; font-weight: bold; background-color: var(--year2-color); color: white; border: none; border-radius: 8px; cursor: pointer; transition: background-color 0.2s; }
+        #start-comparison-btn:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.7; }
+
+        .view { display: none; } .view.active { display: block; }
+        .kpi-cards { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+        
+        .card { background-color: var(--color-bg-secondary); border: 1px solid var(--color-border-primary); box-shadow: 0 2px 8px var(--shadow-color); padding: 20px; border-radius: 8px; text-align: center; flex: 1; min-width: 220px; border-left: 5px solid transparent; }
+        .card.clickable { cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .card.clickable:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+        .card.card-neike { border-left-color: var(--color-accent-blue); }
+        .card.card-waike { border-left-color: var(--color-accent-green); }
+        .card.card-huli { border-left-color: var(--color-accent-yellow); }
+        .card.card-yishi { border-left-color: var(--color-accent-red); }
+        .card.card-other { border-left-color: var(--color-accent-purple); }
+
+        .comparison-value { display: flex; justify-content: space-around; }
+        .year-value .year-label { font-size: 0.8em; color: var(--color-text-secondary); display: block; }
+        .back-button { background-color: white; color: var(--color-text-primary); border: 1px solid var(--color-border-primary); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 1rem; margin-bottom: 20px; transition: background-color 0.2s; }
+        .back-button:hover { background-color: #e9ecef; }
+        .chart-grid { display: grid; gap: 20px; max-width: 1300px; margin: 20px auto; }
+        
+        #unit-chart-grid,
+        #dept-chart-grid,
+        #doctor-chart-grid,
+        #category-chart-grid {
+            grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+        }
+
+        .chart-card { background-color: var(--color-bg-secondary); border: 1px solid var(--color-border-primary); box-shadow: 0 2px 8px var(--shadow-color); padding: 20px; border-radius: 12px; }
+        .chart-card.clickable { cursor: pointer; transition: box-shadow 0.2s, transform 0.2s; }
+        .chart-card.clickable:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+        .chart-card-title { color: var(--color-text-headings); text-align: center; margin-bottom: 15px; font-size: 1.1rem; }
+        .chart-canvas-wrapper { position: relative; height: 280px; width: 100%; }
+        
+        .ai-button { background-color: var(--year1-color); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 1rem; display: block; margin: 30px auto; transition: background-color 0.2s; }
+        .ai-button:hover { background-color: #1c7ed6; }
+        #ai-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center; }
+        .modal-content { background-color: var(--color-bg-secondary); margin: auto; padding: 25px; border: 1px solid var(--color-border-primary); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-radius: 12px; width: 80%; max-width: 700px; color: var(--color-text-primary); }
+        .modal-content h2 { margin-top: 0; color: var(--year1-color); }
+        #ai-content { line-height: 1.6; font-size: 1rem; max-height: 60vh; overflow-y: auto; margin-bottom: 20px; white-space: pre-wrap; }
+        .modal-close-btn { background-color: #f1f3f5; color: var(--color-text-secondary); padding: 8px 15px; border-radius: 8px; cursor: pointer; float: right; border: 1px solid var(--color-border-primary); transition: background-color 0.2s; }
+        .modal-close-btn:hover { background-color: #e9ecef; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HTML structure is identical to v10.8 -->
+        <div id="l1-view" class="view active"><h1>電子病歷簽章率 - 年度比較分析儀</h1><div class="upload-container"><div class="upload-wrapper"><h3>檔案一 (主要數據)</h3><button class="upload-btn" onclick="document.getElementById('fileUploader1').click();">選擇</button><input type="file" id="fileUploader1" multiple><div id="fileName1" class="file-name-display">尚未選擇</div><p class="format-info"><strong>格式：</strong>'114年1月', '科別', 'VS', '應完成', '＜24H'</p></div><div class="upload-wrapper"><h3>檔案二 (類別數據)</h3><button class="upload-btn" onclick="document.getElementById('fileUploader2').click();">選擇</button><input type="file" id="fileUploader2" multiple><div id="fileName2" class="file-name-display">尚未選擇</div><p class="format-info"><strong>格式：</strong>'114年1月', '科別', 'VS', '＜24H', '類別'</p></div></div><div id="comparison-setup" style="display: none;"><h2>設定比較年度</h2><div class="year-selectors"><label>年度一：</label> <select id="year1-select"></select><label>年度二：</label> <select id="year2-select"></select></div><button id="start-comparison-btn" disabled>開始比較分析</button></div></div>
+        <div id="l2-unit-view" class="view"><button class="back-button" onclick="showView('l1-view')">&larr; 返回設定</button><h1 id="unit-view-title"></h1><h2>單位別平均簽章率比較</h2><div class="kpi-cards"></div><button class="ai-button" onclick="showAISuggestions(2)">顯示 AI 智能建議</button><div id="unit-chart-grid" class="chart-grid"></div></div>
+        <div id="l3-dept-view" class="view"><button class="back-button" onclick="showView('l2-unit-view')">&larr; 返回單位別</button><h1 id="dept-chart-title"></h1><button class="ai-button" onclick="showAISuggestions(3)">顯示 AI 智能建議</button><div id="dept-chart-grid" class="chart-grid"></div></div>
+        <div id="l4-doctor-view" class="view"><button class="back-button" onclick="showView('l3-dept-view')">&larr; 返回科別</button><h1 id="doctor-view-title"></h1><button class="ai-button" onclick="showAISuggestions(4)">顯示 AI 智能建議</button><div id="doctor-chart-grid" class="chart-grid"></div></div>
+        <div id="l5-category-view" class="view"><button class="back-button" onclick="showView('l4-doctor-view')">&larr; 返回醫師</button><h1 id="category-view-title"></h1><button class="ai-button" onclick="showAISuggestions(5)">顯示 AI 智能建議</button><div id="category-chart-grid" class="chart-grid"></div></div>
+        <div id="ai-modal" style="display: none;"><div class="modal-content" onclick="event.stopPropagation();"><button class="modal-close-btn" onclick="closeAIModal()">關閉</button><h2>AI 智能建議</h2><div id="ai-content"></div></div></div>
+    </div>
+
+    <script>
+        // --- State and Constants are identical ---
+        const appState = { allRawDataByYear: new Map(), allCategoryDataByYear: new Map(), chartInstances: {}, comparisonYear1: null, comparisonYear2: null, currentUnit: null, currentDept: null, currentDoctor: null };
+        const YEAR_1_COLOR = getComputedStyle(document.documentElement).getPropertyValue('--year1-color').trim();
+        const YEAR_2_COLOR = getComputedStyle(document.documentElement).getPropertyValue('--year2-color').trim();
+        const kpiGroups = { neike: "內科", waike: "外科", huli: "護理部", yishi: "醫事單位", other: "其他專科" };
+        const MONTH_NAMES = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+        const MONTH_MAP = {"1":"一月","2":"二月","3":"三月","4":"四月","5":"五月","6":"六月","7":"七月","8":"八月","9":"九月","10":"十月","11":"十一月","12":"十二月"};
+        const UNIT_MAP_NEIKE = ['一般內科', '內分泌新陳代謝', '胃腸肝膽科', '血液科', '神經內科', '胸腔內科', '免疫風濕', '腎臟科', '心臟血管內科', '感染科', '兒科'];
+        const UNIT_MAP_WAIKE = ['一般外科', '胸腔外科', '神經外科', '骨科', '整形外科', '泌尿科', '心臟血管外科', '大腸直腸科', '脊椎外科', '小兒外科', '乳房醫學科', '乳房外科', '婦產科', '耳鼻喉科', '眼科', '牙科', '口腔顎面外科', '皮膚科'];
+        const UNIT_MAP_HULI = ['10F內科', '11F小兒科', '12F神內外科', '14F外骨科', '15F內科', '16F外科', '06F內科', '07F乳房外科', '08F骨整型科', '09F一般外科', '麻醉科', '04F綜合科加', '病嬰(敬7F)', '新生加護(敬7', '急診室', '血液透析室', '敬08F婦產科', '05F開刀房', '13呼吸中心', 'Rcw'];
+        const UNIT_MAP_YISHI = ['復健療程', '運動醫學中心', '營養諮詢', '心理健康諮商', '檢驗科', '營養課'];
+        const UNIT_MAP_OTHER = ['重症醫學科', '精神科', '復健科', '病理科', '急診科', '家庭醫學科', '放射線科', '放射腫瘤科', '核子醫學科', '一般科'];
+        
+        // --- Setup, File Handling, Helpers and Drilldown functions are identical to v10.8 ---
+        document.addEventListener('DOMContentLoaded', () => { document.getElementById('fileUploader1').addEventListener('change', (e) => handleFileSelection(e, 1)); document.getElementById('fileUploader2').addEventListener('change', (e) => handleFileSelection(e, 2)); document.getElementById('year1-select').addEventListener('change', handleYearSelection); document.getElementById('year2-select').addEventListener('change', handleYearSelection); document.getElementById('start-comparison-btn').addEventListener('click', startComparisonAnalysis); });
+        function handleFileSelection(event, fileNumber) { const files = event.target.files; if (!files || files.length === 0) return; const fileDisplayId = `fileName${fileNumber}`; const dataMap = (fileNumber === 1) ? appState.allRawDataByYear : appState.allCategoryDataByYear; const requiredCols = (fileNumber === 1) ? ['科別', 'VS', '應完成', '＜24H'] : ['科別', 'VS', '＜24H', '類別']; document.getElementById(fileDisplayId).textContent = `處理中...`; dataMap.clear(); readFileData(files, dataMap, requiredCols).then(() => { document.getElementById(fileDisplayId).textContent = `已載入`; checkAndShowComparisonSetup(); }).catch(error => { console.error(`File ${fileNumber} Error:`, error); dataMap.clear(); document.getElementById(fileDisplayId).textContent = '讀取失敗!'; alert(error); checkAndShowComparisonSetup(); }); }
+        function readFileData(files, dataMap, requiredCols) { return Promise.all(Array.from(files).map(file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = (e) => { try { const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' }); let foundDataInFile = false; workbook.SheetNames.forEach(sheetName => { const yearMonth = parseYearMonthFromSheetName(sheetName); if (!yearMonth) return; const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 }); if (rows.length < 2) return; const headers = rows[0].map(h => String(h || '').trim()); const colIndices = {}; for (const col of requiredCols) { colIndices[col] = headers.indexOf(col); if (colIndices[col] === -1) return reject(`檔案 "${file.name}" 的工作表 "${sheetName}" 缺少欄位: "${col}"`); } const sheetData = rows.slice(1).map(row => { const rowData = {}; const departmentName = row[colIndices['科別']]; if (!departmentName) return null; rowData['單位別'] = getUnitByDepartment(departmentName); requiredCols.forEach(col => { let val = row[colIndices[col]]; rowData[col] = (col === '＜24H' && !isNaN(parseFloat(val))) ? Math.min(parseFloat(val), 1.0) : val; }); rowData['月份'] = yearMonth.month; return rowData; }).filter(Boolean); if (sheetData.length > 0) { foundDataInFile = true; if (!dataMap.has(yearMonth.year)) dataMap.set(yearMonth.year, []); dataMap.get(yearMonth.year).push(...sheetData); } }); if (!foundDataInFile) return reject(`在檔案 "${file.name}" 中找不到 "XXX年Y月" 格式的工作表。`); resolve(); } catch (error) { reject(`處理檔案 "${file.name}" 時發生錯誤: ${error.message}`); } }; reader.onerror = (err) => reject(`無法讀取檔案 "${file.name}": ${err}`); reader.readAsArrayBuffer(file); }))); }
+        function checkAndShowComparisonSetup() { const setupPanel = document.getElementById('comparison-setup'); if (appState.allRawDataByYear.size > 0 && appState.allCategoryDataByYear.size > 0) { populateYearSelectors(); setupPanel.style.display = 'block'; } else { setupPanel.style.display = 'none'; } }
+        function populateYearSelectors() { const years = Array.from(appState.allRawDataByYear.keys()).sort((a, b) => b.localeCompare(a)); const sel1 = document.getElementById('year1-select'); const sel2 = document.getElementById('year2-select'); sel1.innerHTML = ''; sel2.innerHTML = ''; years.forEach(year => { sel1.add(new Option(year, year)); sel2.add(new Option(year, year)); }); if (years.length > 1) { sel1.selectedIndex = 1; sel2.selectedIndex = 0; } handleYearSelection(); }
+        function handleYearSelection() { const y1 = document.getElementById('year1-select').value; const y2 = document.getElementById('year2-select').value; const btn = document.getElementById('start-comparison-btn'); if (y1 && y2 && y1 !== y2) { appState.comparisonYear1 = y1; appState.comparisonYear2 = y2; btn.disabled = false; } else { btn.disabled = true; } }
+        function parseYearMonthFromSheetName(sheetName) { const match = sheetName.match(/(\d+年)(\d{1,2})月/); if (match) { const monthName = MONTH_MAP[match[2]]; if (monthName) return { year: match[1], month: monthName }; } return null; }
+        function getUnitByDepartment(department) { if (!department) return '其他專科'; const deptStr = String(department).trim(); if (UNIT_MAP_NEIKE.includes(deptStr)) return '內科'; if (UNIT_MAP_WAIKE.includes(deptStr)) return '外科'; if (UNIT_MAP_HULI.includes(deptStr)) return '護理部'; if (UNIT_MAP_YISHI.includes(deptStr)) return '醫事單位'; if (UNIT_MAP_OTHER.includes(deptStr)) return '其他專科'; return '其他專科'; }
+        function calculateAverageRate(data) { const validData = data.filter(r => r && !isNaN(parseFloat(r['＜24H']))); if (validData.length === 0) return 0; return (validData.reduce((acc, r) => acc + parseFloat(r['＜24H']), 0) / validData.length) * 100; }
+        function showView(viewId) { document.querySelectorAll('.view').forEach(v => v.classList.remove('active')); document.getElementById(viewId).classList.add('active'); window.scrollTo(0, 0); }
+        function startComparisonAnalysis() { drillDownToLevel2(); }
+        function drillDownToLevel2() { const { comparisonYear1: y1, comparisonYear2: y2 } = appState; document.getElementById('unit-view-title').textContent = `${y1} vs ${y2} 年度比較`; const rawDataY1 = appState.allRawDataByYear.get(y1) || []; const rawDataY2 = appState.allRawDataByYear.get(y2) || []; const kpiContainer = document.querySelector('#l2-unit-view .kpi-cards'); kpiContainer.innerHTML = ''; Object.keys(kpiGroups).forEach(key => { const groupName = kpiGroups[key]; const avg1 = calculateAverageRate(rawDataY1.filter(r => r['單位別'] === groupName)); const avg2 = calculateAverageRate(rawDataY2.filter(r => r['單位別'] === groupName)); kpiContainer.innerHTML += `<div class="card clickable card-${key}" onclick="drillDownToLevel3('${groupName}')"><div class="label">${groupName}</div><div class="comparison-value"><div class="year-value"><span class="year-label">${y1}</span>${avg1.toFixed(2)}%</div><div class="year-value"><span class="year-label">${y2}</span>${avg2.toFixed(2)}%</div></div></div>`; }); const grid = document.getElementById('unit-chart-grid'); grid.innerHTML = ''; Object.values(kpiGroups).forEach((groupName, index) => { const card = document.createElement('div'); card.className = 'chart-card clickable'; card.onclick = () => drillDownToLevel3(groupName); const canvasId = `unit-canvas-${index}`; card.innerHTML = `<h3 class="chart-card-title">${groupName}</h3><div class="chart-canvas-wrapper"><canvas id="${canvasId}"></canvas></div>`; grid.appendChild(card); const datasets = [ { label: y1, data: MONTH_NAMES.map(m=>{const d=rawDataY1.filter(r=>r['單位別']===groupName&&r['月份']===m);return d.length?calculateAverageRate(d):null;}), borderColor: YEAR_1_COLOR, tension: 0.1 }, { label: y2, data: MONTH_NAMES.map(m=>{const d=rawDataY2.filter(r=>r['單位別']===groupName&&r['月份']===m);return d.length?calculateAverageRate(d):null;}), borderColor: YEAR_2_COLOR, tension: 0.1 } ]; drawChart(canvasId, 'line', MONTH_NAMES, datasets, { title: `月簽章率比較`, legend: true }); }); showView('l2-unit-view'); }
+        function drillDownToLevel3(unit) { appState.currentUnit = unit; const { comparisonYear1: y1, comparisonYear2: y2 } = appState; document.getElementById('dept-chart-title').textContent = `${unit} - ${y1} vs ${y2} 科別比較`; const unitDataY1 = (appState.allRawDataByYear.get(y1) || []).filter(r => r['單位別'] === unit); const unitDataY2 = (appState.allRawDataByYear.get(y2) || []).filter(r => r['單位別'] === unit); const departments = [...new Set([...unitDataY1, ...unitDataY2].map(r => r['科別']))].sort(); const grid = document.getElementById('dept-chart-grid'); grid.innerHTML = ''; departments.forEach((dept, index) => { const card = document.createElement('div'); card.className = 'chart-card clickable'; card.onclick = () => drillDownToLevel4(dept); const canvasId = `dept-canvas-${index}`; card.innerHTML = `<h3 class="chart-card-title">${dept}</h3><div class="chart-canvas-wrapper"><canvas id="${canvasId}"></canvas></div>`; grid.appendChild(card); const datasets = [ { label: y1, data: MONTH_NAMES.map(m=>{const d=unitDataY1.filter(r=>r['科別']===dept&&r['月份']===m);return d.length?calculateAverageRate(d):null;}), borderColor: YEAR_1_COLOR, tension: 0.1 }, { label: y2, data: MONTH_NAMES.map(m=>{const d=unitDataY2.filter(r=>r['科別']===dept&&r['月份']===m);return d.length?calculateAverageRate(d):null;}), borderColor: YEAR_2_COLOR, tension: 0.1 } ]; drawChart(canvasId, 'line', MONTH_NAMES, datasets, { legend: true, title: `月簽章率比較` }); }); showView('l3-dept-view'); }
+        function drillDownToLevel4(department) { appState.currentDept = department; const { comparisonYear1: y1, comparisonYear2: y2, currentUnit } = appState; document.getElementById('doctor-view-title').textContent = `${department} - ${y1} vs ${y2} 人員比較`; const deptDataY1 = (appState.allRawDataByYear.get(y1) || []).filter(r => r['單位別'] === currentUnit && r['科別'] === department); const deptDataY2 = (appState.allRawDataByYear.get(y2) || []).filter(r => r['單位別'] === currentUnit && r['科別'] === department); const doctors = [...new Set([...deptDataY1, ...deptDataY2].map(r => r['VS']))].sort(); const grid = document.getElementById('doctor-chart-grid'); grid.innerHTML = ''; doctors.forEach((doc, index) => { const card = document.createElement('div'); card.className = 'chart-card clickable'; card.onclick = () => drillDownToLevel5(doc); const canvasId = `doc-canvas-${index}`; card.innerHTML = `<h3 class="chart-card-title">${doc}</h3><div class="chart-canvas-wrapper"><canvas id="${canvasId}"></canvas></div>`; grid.appendChild(card); const datasets = [ { label: y1, data: MONTH_NAMES.map(m=>{const d=deptDataY1.filter(r=>r['VS']===doc&&r['月份']===m);return d.length?calculateAverageRate(d):null;}), borderColor: YEAR_1_COLOR, tension: 0.1 }, { label: y2, data: MONTH_NAMES.map(m=>{const d=deptDataY2.filter(r=>r['VS']===doc&&r['月份']===m);return d.length?calculateAverageRate(d):null;}), borderColor: YEAR_2_COLOR, tension: 0.1 } ]; drawChart(canvasId, 'line', MONTH_NAMES, datasets, { legend: true, title: `個人月簽章率比較` }); }); showView('l4-doctor-view'); }
+        function drillDownToLevel5(doctor) { appState.currentDoctor = doctor; const { comparisonYear1: y1, comparisonYear2: y2, currentDept } = appState; document.getElementById('category-view-title').textContent = `${doctor} (${currentDept}) - ${y1} vs ${y2} 類別比較`; const grid = document.getElementById('category-chart-grid'); grid.innerHTML = ''; const catDataY1 = (appState.allCategoryDataByYear.get(y1) || []).filter(r => r['科別'] === currentDept && r['VS'] === doctor); const catDataY2 = (appState.allCategoryDataByYear.get(y2) || []).filter(r => r['科別'] === currentDept && r['VS'] === doctor); const categories = [...new Set([...catDataY1, ...catDataY2].map(r => r['類別']))].filter(Boolean).sort(); if (categories.length === 0) { grid.innerHTML = `<p style="text-align:center;">在 ${doctor} 的數據中找不到有效的'類別'資料。</p>`; showView('l5-category-view'); return; } categories.forEach((cat, index) => { const card = document.createElement('div'); card.className = 'chart-card'; const canvasId = `cat-canvas-${index}`; card.innerHTML = `<h3 class="chart-card-title">${cat}</h3><div class="chart-canvas-wrapper"><canvas id="${canvasId}"></canvas></div>`; grid.appendChild(card); const datasets = [ { label: y1, data: MONTH_NAMES.map(m=>{const d=catDataY1.filter(r=>r['類別']===cat&&r['月份']===m);return d.length?calculateAverageRate(d):null;}), borderColor: YEAR_1_COLOR, tension: 0.1 }, { label: y2, data: MONTH_NAMES.map(m=>{const d=catDataY2.filter(r=>r['類別']===cat&&r['月份']===m);return d.length?calculateAverageRate(d):null;}), borderColor: YEAR_2_COLOR, tension: 0.1 } ]; drawChart(canvasId, 'line', MONTH_NAMES, datasets, { legend: true, title: `類別月簽章率比較` }); }); showView('l5-category-view'); }
+        
+        // --- MODIFICATION: AI Functions are now fully implemented ---
+        function showAISuggestions(level) {
+            const modal = document.getElementById('ai-modal');
+            const contentDiv = document.getElementById('ai-content');
+            let suggestions = "無法生成建議，請確認數據是否充足。";
+            try {
+                if (level === 2) suggestions = generateL2Suggestions();
+                else if (level === 3) suggestions = generateL3Suggestions();
+                else if (level === 4) suggestions = generateL4Suggestions();
+                else if (level === 5) suggestions = generateL5Suggestions();
+            } catch (error) {
+                console.error("AI suggestion error:", error);
+                suggestions = "生成建議時發生內部錯誤。";
+            }
+            contentDiv.textContent = suggestions;
+            modal.style.display = 'flex';
+        }
+
+        function closeAIModal() {
+            document.getElementById('ai-modal').style.display = 'none';
+        }
+        
+        function generateL2Suggestions() {
+            const { comparisonYear1: y1, comparisonYear2: y2 } = appState;
+            const dataY1 = appState.allRawDataByYear.get(y1) || [];
+            const dataY2 = appState.allRawDataByYear.get(y2) || [];
+            let analysis = [];
+            let seasonalDips = {};
+
+            Object.values(kpiGroups).forEach(groupName => {
+                const groupDataY1 = dataY1.filter(r => r['單位別'] === groupName);
+                const groupDataY2 = dataY2.filter(r => r['單位別'] === groupName);
+                const avg1 = calculateAverageRate(groupDataY1);
+                const avg2 = calculateAverageRate(groupDataY2);
+
+                if (avg1 > 0 || avg2 > 0) analysis.push({ label: groupName, diff: avg2 - avg1 });
+
+                MONTH_NAMES.forEach((month, index) => {
+                    // Check Feb, Jul, Aug for seasonal patterns
+                    if (index === 1 || index === 6 || index === 7) { 
+                         const monthAvg1 = calculateAverageRate(groupDataY1.filter(r => r['月份'] === month));
+                         const monthAvg2 = calculateAverageRate(groupDataY2.filter(r => r['月份'] === month));
+                         if ((monthAvg1 > 0 && monthAvg1 < 90) || (monthAvg2 > 0 && monthAvg2 < 90)) {
+                             if (!seasonalDips[month]) seasonalDips[month] = [];
+                             seasonalDips[month].push(groupName);
+                         }
+                    }
+                });
+            });
+
+            let html = `--- 數據洞察 (${y1} vs ${y2}) ---\n\n`;
+            const improvements = analysis.filter(a => a.diff > 1);
+            const declines = analysis.filter(a => a.diff < -1);
+
+            if (declines.length > 0) { html += `[!] 需要關注的單位 (簽章率下降)：\n` + declines.sort((a,b)=>a.diff-b.diff).map(d=>`  - ${d.label}: 下降 ${Math.abs(d.diff).toFixed(2)}%`).join('\n') + '\n\n'; }
+            if (improvements.length > 0) { html += `[✓] 表現進步的單位 (簽章率提升)：\n` + improvements.sort((a,b)=>b.diff-a.diff).map(d=>`  - ${d.label}: 提升 ${d.diff.toFixed(2)}%`).join('\n') + '\n\n'; }
+            if (declines.length === 0 && improvements.length === 0) { html += "所有單位別的表現與前一年度相比基本持平。\n\n"; }
+
+            html += `--- 可能原因推測 ---\n\n`;
+            const summerDips = new Set([...(seasonalDips['七月'] || []), ...(seasonalDips['八月'] || [])]);
+            if (seasonalDips['二月'] || summerDips.size > 0) {
+                html += `[週期性模式] 觀察到部分單位在特定月份表現較差：\n`;
+                if (seasonalDips['二月']) { html += `  - 二月份低點：${[...new Set(seasonalDips['二月'])].join('、')}\n    推測：可能受農曆新年長假與冬季流感高峰影響，打亂常規工作與交班流程。\n`; }
+                if (summerDips.size > 0) { html += `  - 夏季低點 (七/八月)：${[...summerDips].join('、')}\n    推測：此期間常為新進住院醫師、實習醫師報到月，因不熟悉系統或流程導致；同時也可能是資深人員的休假高峰期。\n\n`;}
+            }
+            if (declines.length > 0) {
+                 const worstPerformer = declines.sort((a,b)=>a.diff-b.diff)[0];
+                 html += `[普遍性問題] ${worstPerformer.label} 的顯著下滑，建議優先下鑽分析，確認是內部少數科別問題，還是普遍性管理議題。\n\n`;
+            } else {
+                 html += `[整體穩定] 未發現顯著的普遍性問題或負面趨勢。\n\n`;
+            }
+            html += "--- 下一步建議 ---\n\n1. 點擊「需要關注」列表中的單位，下鑽至 L3 查看是哪個科別導致的。\n2. 對於有週期性低點的單位，可特別關注該月份的支援與提醒機制。";
+            return html;
+        }
+
+        function generateL3Suggestions() {
+            const { comparisonYear1: y1, comparisonYear2: y2, currentUnit } = appState;
+            const unitDataY1 = (appState.allRawDataByYear.get(y1) || []).filter(r => r['單位別'] === currentUnit);
+            const unitDataY2 = (appState.allRawDataByYear.get(y2) || []).filter(r => r['單位別'] === currentUnit);
+            const departments = [...new Set([...unitDataY1, ...unitDataY2].map(r => r['科別']))].sort();
+            let analysis = [];
+            departments.forEach(dept => { const avg1 = calculateAverageRate(unitDataY1.filter(r => r['科別'] === dept)); const avg2 = calculateAverageRate(unitDataY2.filter(r => r['科別'] === dept)); if (avg1 > 0 || avg2 > 0) analysis.push({ label: dept, diff: avg2 - avg1 }); });
+            
+            let html = `--- 數據洞察 (${currentUnit}) ---\n\n`;
+            const declines = analysis.filter(a => a.diff < -1);
+            if (declines.length > 0) {
+                html += `[!] 在 ${currentUnit} 中，以下科別表現退步：\n` + declines.sort((a,b)=>a.diff-b.diff).map(d=>`  - ${d.label}: 下降 ${Math.abs(d.diff).toFixed(2)}%`).join('\n') + '\n\n';
+            } else {
+                html += `[✓] ${currentUnit} 下所有科別的表現均保持穩定或進步！\n\n`;
+            }
+            
+            html += `--- 可能原因推測 ---\n\n`;
+            if (declines.length > 0 && declines.length / departments.length > 0.5) {
+                html += `[普遍性問題] ${currentUnit} 有超過半數的科別表現下滑，可能指向全部門性的問題。推測：是否該單位有新的政策、系統或管理人員變動？或是該單位的工作量在 ${y2} 有顯著增加？\n\n`;
+            } else if (declines.length > 0) {
+                const worst = declines[0];
+                html += `[個別性問題] 單位簽章率的下滑主要由 ${worst.label} 等少數科別造成。推測：問題可能集中在這些科別內部，例如特定人員異動、引進新技術或特定疾病的病人數增加等。\n\n`;
+            } else {
+                 html += "該單位整體管理狀況良好，未發現明顯的系統性問題。\n\n";
+            }
+            html += "--- 下一步建議 ---\n\n1. 點擊退步最顯著的科別圖表，下鑽至 L4，檢視其科內所有人員的表現是否存在普遍性下滑。";
+            return html;
+        }
+
+        function generateL4Suggestions() {
+            const { y1, y2, currentUnit, currentDept } = { y1: appState.comparisonYear1, y2: appState.comparisonYear2, ...appState };
+            const deptDataY1 = (appState.allRawDataByYear.get(y1) || []).filter(r => r['單位別'] === currentUnit && r['科別'] === currentDept);
+            const deptDataY2 = (appState.allRawDataByYear.get(y2) || []).filter(r => r['單位別'] === currentUnit && r['科別'] === currentDept);
+            const doctors = [...new Set([...deptDataY1, ...deptDataY2].map(r => r['VS']))].sort();
+            let analysis = [];
+            doctors.forEach(doc => { const avg1 = calculateAverageRate(deptDataY1.filter(r => r['VS'] === doc)); const avg2 = calculateAverageRate(deptDataY2.filter(r => r['VS'] === doc)); if (avg1 > 0 || avg2 > 0) analysis.push({ label: doc, diff: avg2 - avg1 }); });
+
+            let html = `--- 數據洞察 (${currentDept}) ---\n\n`;
+            const declines = analysis.filter(a => a.diff < -1);
+            if (declines.length > 0) {
+                 const worst = declines.sort((a,b)=>a.diff-b.diff)[0];
+                 html += `[!] 在 ${currentDept} 中，簽章率下降最顯著的人員是：\n  - ${worst.label}: 下降 ${Math.abs(worst.diff).toFixed(2)}%\n\n`;
+            } else {
+                 html += `[✓] ${currentDept} 下所有人員的表現均保持穩定或進步！\n\n`;
+            }
+
+            html += `--- 可能原因推測 ---\n\n`;
+            if (declines.length > 0) {
+                 const worst = declines[0];
+                 html += `[個體因素] 科別的整體表現可能被 ${worst.label} 等少數人員拉低。推測：該人員是否為新進同仁仍在適應期？或是 ${y2} 的業務量、負責病患的複雜度有顯著提升？\n\n`;
+            } else {
+                 html += "此科別內部人員表現穩定，可能存在良好的團隊合作與提醒機制。\n\n";
+            }
+            html += "--- 下一步建議 ---\n\n1. 點擊下降最顯著人員的圖表，下鑽至 L5，分析是哪一個「病歷類別」的簽章表現不佳，以進行根本原因分析。";
+            return html;
+        }
+
+        function generateL5Suggestions() {
+            const { y1, y2, currentDept, currentDoctor } = { y1: appState.comparisonYear1, y2: appState.comparisonYear2, ...appState };
+            const catDataY1 = (appState.allCategoryDataByYear.get(y1) || []).filter(r => r['科別'] === currentDept && r['VS'] === currentDoctor);
+            const catDataY2 = (appState.allCategoryDataByYear.get(y2) || []).filter(r => r['科別'] === currentDept && r['VS'] === currentDoctor);
+            const categories = [...new Set([...catDataY1, ...catDataY2].map(r => r['類別']))].filter(Boolean).sort();
+            let analysis = [];
+            categories.forEach(cat => { const avg1 = calculateAverageRate(catDataY1.filter(r => r['類別'] === cat)); const avg2 = calculateAverageRate(catDataY2.filter(r => r['類別'] === cat)); if (avg1 > 0 || avg2 > 0) analysis.push({ label: cat, diff: avg2 - avg1 }); });
+            
+            let html = `--- 數據洞察 (${currentDoctor}) ---\n\n`;
+            const declines = analysis.filter(a => a.diff < -2);
+            if (declines.length > 0) {
+                 html += `[!] ${currentDoctor} 的簽章率在以下類別中出現顯著下降：\n` + declines.sort((a,b)=>a.diff-b.diff).map(d=>`  - ${d.label}: 下降 ${Math.abs(d.diff).toFixed(2)}%`).join('\n') + '\n\n';
+            } else {
+                 html += `[✓] ${currentDoctor} 在所有病歷類別的表現均保持穩定或進步。\n\n`;
+            }
+            
+            html += `--- 可能原因推測 (根本原因分析) ---\n\n`;
+            if (declines.length > 0) {
+                const worst = declines[0];
+                html += `[流程/系統問題] ${currentDoctor} 的整體退步主要由「${worst.label}」造成。推測：\n`;
+                html += `  1. 系統面：該類別的電子表單介面是否在 ${y2} 有過改動，導致操作不便？\n`;
+                html += `  2. 流程面：該醫師是否在 ${y2} 開始接觸較多此類別的複雜案例，不熟悉簽核流程？\n`;
+                html += `  3. 認知面：該醫師是否清楚此類別病歷的簽核時效性與重要性？\n\n`;
+            } else {
+                html += "該人員各項業務指標均維持良好，表現值得肯定。\n\n";
+            }
+            html += "--- 下一步建議 ---\n\n1. 若有顯著下降的類別，應直接與該人員溝通，了解其在處理該類病歷時遇到的實際困難。\n2. 比對其他在同類別表現優異的同儕，看是否有可複製的經驗。";
+            return html;
+        }
+
+        function drawChart(canvasId, type, labels, datasets, customOptions = {}) {
+             const ctx = document.getElementById(canvasId)?.getContext('2d'); if (!ctx) return;
+             if (appState.chartInstances[canvasId]) appState.chartInstances[canvasId].destroy();
+             const options = { responsive: true, maintainAspectRatio: false, plugins: { title: { display: !!customOptions.title, text: customOptions.title, font: { size: 16, weight: 'normal' }, color: 'var(--color-text-headings)' }, legend: { display: customOptions.legend !== false, position: 'top', labels: { color: 'var(--color-text-primary)' } }, tooltip: { mode: 'index', intersect: false, callbacks: { label: (c) => `${c.dataset.label || ''}: ${c.parsed.y ? c.parsed.y.toFixed(2) : 'N/A'}%` } } }, scales: { y: { beginAtZero: true, min: 0, max: 100, ticks: { callback: (v) => v + '%', color: 'var(--color-text-secondary)' }, grid: { color: 'var(--color-border-primary)' } }, x: { ticks: { color: 'var(--color-text-secondary)' }, grid: { display: false } } } };
+             appState.chartInstances[canvasId] = new Chart(ctx, { type, data: { labels, datasets }, options });
+        }
+    </script>
+</body>
+</html>
